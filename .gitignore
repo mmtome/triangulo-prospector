@@ -1,0 +1,8 @@
+.env
+node_modules/
+servidor.log
+
+# Varreduras salvas: são dados de prospecção, não código. Ficam na máquina de
+# quem prospectou.
+data/*.json
+data/*.csv

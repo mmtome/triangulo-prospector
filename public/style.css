@@ -1,0 +1,358 @@
+/*
+ * Paleta travada no Manual da Marca v1.0 da Triângulo Solutions, a mesma do
+ * gestor (src/app/globals.css).
+ *
+ * Com marca vermelha a semântica vem de graça — e é o oposto do que valia na
+ * versão ciano deste app, então as três regras mudam:
+ *
+ *  1. Vermelho É alarme. Erro, falha de coleta e lead quente usam a cor da
+ *     marca; o verde --ok é que marca "está funcionando".
+ *  2. Todo preenchimento sólido de vermelho leva texto BRANCO: #CE2B34 sobre
+ *     branco dá 4.9:1 e passa; sobre o preto da marca dá 2.6:1 e reprova.
+ *  3. A escala de temperatura sobe até o vermelho da marca — o lead quente é
+ *     literalmente o que a Triângulo quer, então usa a cor dela.
+ */
+
+:root {
+  --brand: #ce2b34;
+  --brand-hover: #e03840;
+  --brand-fraco: #ce2b3422;
+  --ink: #0e0e10;
+  --graphite: #17171a;
+  --surface: #1c1c20;
+  --text: #f5f4f3;
+  --muted: #9a9aa2;
+  --faint: #6b6b73;
+  --linha: #ffffff14;
+  --ok: #5da283;
+
+  /* Temperatura: vermelho da marca no topo, cinza morto na base. */
+  --quente: #ce2b34;
+  --morno: #f1bd6c;
+  --frio: #6e9bd1;
+  --gelado: #6b6b73;
+
+  --raio: 10px;
+  --sombra: 0 1px 3px #0006, 0 8px 24px #0004;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font: 14px/1.55 Poppins, "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── estrutura ───────────────────────────────────────────────────────────── */
+
+.topo {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  background: #0e0e10ee;
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--linha);
+}
+
+.marca { display: flex; align-items: baseline; gap: 10px; }
+.marca b { font-size: 16px; letter-spacing: -0.01em; font-weight: 650; }
+.marca span { color: var(--faint); font-size: 12px; }
+
+.diagnostico { margin-left: auto; display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.diagnostico .pino { display: inline-flex; align-items: center; gap: 6px; }
+.diagnostico .bolha { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.diagnostico .ok .bolha { background: var(--ok); }
+.diagnostico .ruim .bolha { background: var(--brand); }
+
+.pagina {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 24px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) { .pagina { grid-template-columns: 1fr; } }
+
+.painel {
+  background: var(--graphite);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  padding: 18px;
+}
+
+.lateral { position: sticky; top: 74px; display: grid; gap: 16px; }
+@media (max-width: 1000px) { .lateral { position: static; } }
+
+h2 {
+  margin: 0 0 14px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 600;
+}
+
+/* ── formulário ──────────────────────────────────────────────────────────── */
+
+label { display: block; margin-bottom: 12px; }
+label > span { display: block; margin-bottom: 5px; font-size: 12px; color: var(--muted); }
+
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--ink);
+  color: var(--text);
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  font: inherit;
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-fraco);
+}
+
+.dupla { display: grid; grid-template-columns: 1fr 88px; gap: 10px; }
+
+.caixa { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 12px; }
+.caixa input { margin-top: 3px; accent-color: var(--brand); }
+.caixa div { font-size: 12px; color: var(--muted); }
+.caixa strong { display: block; color: var(--text); font-weight: 500; font-size: 13px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn:hover:not(:disabled) { background: #ffffff0e; border-color: #ffffff2a; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Regra 2 da paleta: vermelho sólido sempre com texto branco. */
+.btn-primario { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
+.btn-primario:hover:not(:disabled) { background: var(--brand-hover); border-color: var(--brand-hover); }
+
+.btn-largo { width: 100%; }
+.btn-pequeno { padding: 6px 11px; font-size: 12px; }
+
+/* ── progresso ───────────────────────────────────────────────────────────── */
+
+.progresso { display: none; }
+.progresso.ativo { display: block; }
+
+.barra { height: 4px; background: #ffffff12; border-radius: 2px; overflow: hidden; margin: 10px 0; }
+.barra i { display: block; height: 100%; background: var(--brand); width: 0; transition: width 0.3s; }
+
+.linha-status { font-size: 12px; color: var(--muted); min-height: 18px; }
+.contagem { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.contagem small { font-size: 12px; font-weight: 400; color: var(--faint); }
+
+/* ── resumo e filtros ────────────────────────────────────────────────────── */
+
+.resumo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+
+.ficha {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 999px;
+  background: var(--graphite);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.ficha:hover { border-color: #ffffff2a; }
+.ficha[aria-pressed="true"] { border-color: var(--brand); color: var(--text); background: var(--brand-fraco); }
+.ficha b { color: var(--text); font-weight: 600; }
+
+.acoes { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.acoes .empurra { margin-left: auto; }
+
+/* ── cartão do lead ──────────────────────────────────────────────────────── */
+
+.leads { display: grid; gap: 12px; }
+
+.lead {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 14px;
+  padding: 16px;
+  background: var(--graphite);
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--gelado);
+  border-radius: var(--raio);
+}
+.lead.t-quente { border-left-color: var(--quente); }
+.lead.t-morno { border-left-color: var(--morno); }
+.lead.t-frio { border-left-color: var(--frio); }
+.lead.marcado { background: #0f1a1c; border-color: #ffffff26; }
+
+.lead input[type="checkbox"] { width: 17px; height: 17px; margin-top: 3px; accent-color: var(--brand); }
+
+.cabeca { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cabeca h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.cabeca .sub { color: var(--faint); font-size: 12px; }
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  /* Cada temperatura leva o texto que passa em contraste sobre ela: os fundos
+     escuros (quente, gelado) recebem branco; os claros, o preto da marca. */
+  color: #fff;
+  background: var(--gelado);
+  white-space: nowrap;
+}
+.t-quente .selo { background: var(--quente); color: #fff; }
+.t-morno .selo { background: var(--morno); color: var(--ink); }
+.t-frio .selo { background: var(--frio); color: var(--ink); }
+
+.pontos { margin-left: auto; text-align: right; }
+.pontos b { font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
+.pontos small { display: block; color: var(--faint); font-size: 11px; }
+
+.resumo-lead { margin: 10px 0 12px; color: var(--muted); font-size: 13px; }
+
+/* Os dois eixos. Mostrados sempre juntos porque a temperatura é o MENOR
+   deles — ver um sozinho leva à conclusão errada sobre o lead. */
+.eixos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; max-width: 460px; }
+.eixo span { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); margin-bottom: 4px; }
+.eixo span b { color: var(--muted); font-weight: 600; }
+.eixo i { display: block; height: 4px; border-radius: 2px; background: #ffffff12; position: relative; overflow: hidden; }
+/* Com a marca vermelha, esforço e carência não podem dividir a mesma cor: a
+   barra existe para comparar os dois eixos. Esforço em verde (o que o negócio
+   já faz certo), carência em vermelho (o buraco — que é o que se vende). */
+.eixo i::after { content: ""; position: absolute; inset: 0; width: var(--v); background: var(--ok); }
+.eixo.carencia i::after { background: var(--brand); }
+
+.dados { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.dado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dado b { color: var(--text); font-weight: 600; }
+.dado.alerta { border-color: #ce2b3455; color: #f0a3a7; }
+.dado.bom { border-color: #5da28355; color: #8ec8ae; }
+
+.sinais { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 3px; }
+.sinais li { font-size: 12px; color: var(--muted); padding-left: 16px; position: relative; }
+.sinais li::before { content: "▸"; position: absolute; left: 0; color: var(--faint); }
+.sinais li.neutro { color: var(--faint); }
+.sinais li.neutro::before { content: "·"; }
+
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.vazio { padding: 60px 20px; text-align: center; color: var(--faint); }
+.vazio b { display: block; color: var(--muted); font-size: 15px; margin-bottom: 6px; font-weight: 500; }
+
+/* ── histórico ───────────────────────────────────────────────────────────── */
+
+.historico { display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.historico button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 11px;
+  background: transparent;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.historico button:hover { background: #ffffff0e; }
+.historico small { display: block; color: var(--faint); }
+
+/* ── avisos ──────────────────────────────────────────────────────────────── */
+
+.aviso {
+  padding: 11px 13px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.aviso-erro { border-color: #ce2b3466; background: #ce2b3418; color: #f0a3a7; }
+.aviso-ok { border-color: #5da28355; background: #5da28316; color: #8ec8ae; }
+.aviso-nota { border-color: var(--linha); background: #ffffff08; color: var(--muted); }
+.aviso pre { margin: 8px 0 0; white-space: pre-wrap; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+
+/* ── fora da lista ────────────────────────────────────────────────────────
+   Descartado não é lead: aparece apagado, sem temperatura e sem seleção. O
+   objetivo é dar auditoria, não competir com a lista de verdade. */
+.descartados { margin: 0 0 14px; }
+
+.linha-descarte {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px dashed var(--linha);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.linha-descarte:hover { border-color: var(--faint); }
+.linha-descarte b { color: var(--text); }
+.linha-descarte span { margin-left: auto; text-decoration: underline; }
+
+.lista-descarte {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 4px;
+  display: grid;
+  gap: 6px;
+}
+.lista-descarte li {
+  font-size: 12px;
+  color: var(--faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.lista-descarte b { color: var(--text); font-weight: 600; }
+.lista-descarte small { flex: 1 1 100%; opacity: 0.85; }

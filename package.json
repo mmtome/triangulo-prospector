@@ -1,0 +1,15 @@
+{
+  "name": "triangulo-prospector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Prospector de sites da Triângulo Solutions — varre o Google Meu Negócio e o Instagram e classifica leads por temperatura.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "cli": "node cli.mjs"
+  }
+}

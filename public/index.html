@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prospector · Triângulo</title>
+  <!-- Poppins é a família da marca (Manual da Marca, seção 09). Carregada do
+       Google Fonts porque este app não tem build; sem internet o stack cai
+       para a fonte de sistema e o layout não muda. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header class="topo">
+  <div class="marca">
+    <b>Prospector</b>
+    <span>Triângulo Solutions</span>
+  </div>
+  <div class="diagnostico" id="diagnostico"></div>
+</header>
+
+<main class="pagina">
+
+  <aside class="lateral">
+
+    <section class="painel">
+      <h2>Nova varredura</h2>
+
+      <form id="formulario">
+        <label>
+          <span>Nicho ou termo de busca</span>
+          <input type="text" id="termo" list="nichos" placeholder="clínica odontológica" required />
+          <datalist id="nichos">
+            <option value="clínica odontológica"></option>
+            <option value="dentista"></option>
+            <option value="clínica médica"></option>
+            <option value="clínica de estética"></option>
+            <option value="dermatologista"></option>
+            <option value="fisioterapia"></option>
+            <option value="psicólogo"></option>
+            <option value="nutricionista"></option>
+            <option value="veterinária"></option>
+            <option value="advogado"></option>
+            <option value="academia"></option>
+            <option value="salão de beleza"></option>
+          </datalist>
+        </label>
+
+        <div class="dupla">
+          <label>
+            <span>Cidade</span>
+            <input type="text" id="cidade" value="Uberaba" required />
+          </label>
+          <label>
+            <span>UF</span>
+            <input type="text" id="uf" value="MG" maxlength="2" />
+          </label>
+        </div>
+
+        <label>
+          <span>Quantidade de leads</span>
+          <input type="number" id="quantidade" value="20" min="1" max="120" />
+        </label>
+
+        <label>
+          <span>Profundidade</span>
+          <select id="profundidade">
+            <option value="completa">Completa — GMN + Instagram + site</option>
+            <option value="rapida">Rápida — só o Google Meu Negócio</option>
+          </select>
+        </label>
+
+        <div class="caixa">
+          <input type="checkbox" id="mostrarNavegador" />
+          <div>
+            <strong>Mostrar o navegador</strong>
+            Abre o Chrome na tela em vez de rodar escondido. Útil para ver onde
+            travou quando algum lead vem incompleto.
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primario btn-largo" id="btnProspectar">
+          Prospectar
+        </button>
+      </form>
+
+      <div class="progresso" id="progresso">
+        <div class="barra"><i id="barraInterna"></i></div>
+        <div class="contagem"><span id="contador">0</span> <small id="contadorAlvo"></small></div>
+        <div class="linha-status" id="statusTexto"></div>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>Varreduras anteriores</h2>
+      <div class="historico" id="historico"></div>
+    </section>
+
+    <section class="painel">
+      <h2>Como a temperatura é calculada</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
+        Dois eixos, não um número só.
+        <b style="color:var(--text)">Esforço</b> é o quanto o negócio já investe
+        em presença digital — posts, seguidores, avaliações.
+        <b style="color:var(--text)">Carência</b> é o que falta de site e de GMN.
+      </p>
+      <p style="font-size:12px;color:var(--muted);margin:0">
+        A temperatura é limitada pelo <b style="color:var(--text)">menor</b> dos
+        dois: sem esforço não há quem valorize um site, e sem carência não há o
+        que vender. Por isso <b style="color:var(--quente)">Quente</b> exige os
+        dois altos — clínica parada e sem site não é lead bom, é lead sem
+        dinheiro em marketing.
+      </p>
+    </section>
+
+  </aside>
+
+  <section>
+    <div id="avisos"></div>
+
+    <div class="resumo" id="resumo"></div>
+    <div class="descartados" id="descartados"></div>
+    <div class="acoes" id="acoes"></div>
+
+    <div class="leads" id="leads">
+      <div class="vazio">
+        <b>Nenhuma varredura carregada</b>
+        Preencha o nicho e a cidade ao lado, ou abra uma varredura anterior.
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
