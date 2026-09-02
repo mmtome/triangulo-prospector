@@ -16,18 +16,20 @@
 import { writeFileSync, rmSync, existsSync } from "node:fs";
 import { abrirNavegador, novaAba, MARCA_SESSAO } from "./src/cdp.mjs";
 
-const PERFIL_TESTE = "https://www.instagram.com/instagram/";
+// /accounts/edit/ e a unica prova: so abre para sessao autenticada. Perfil
+// publico carrega a grade para visitante anonimo tambem, e foi o que gerou dois
+// falsos positivos antes.
+const PROVA = "https://www.instagram.com/accounts/edit/";
 
 const navegador = await abrirNavegador({ headless: true, perfilFixo: true });
 const aba = await novaAba(navegador.porta);
 
 let resultado = null;
 try {
-  await aba.irPara(PERFIL_TESTE, { espera: 6000 });
+  await aba.irPara(PROVA, { espera: 6000 });
   resultado = await aba.avaliar(() => ({
     caminho: location.pathname,
     grade: document.querySelectorAll("main img, article img").length,
-    pedeLogin: /Entrar|Log in|Cadastre-se/.test(document.body.innerText.slice(0, 400)),
   }));
 } catch (e) {
   console.error("  Falhou ao abrir o Instagram: " + e.message);
@@ -48,7 +50,7 @@ const logado =
   !!resultado &&
   !resultado.caminho.startsWith("/accounts/login") &&
   !resultado.caminho.includes("recaptcha") &&
-  resultado.grade > 0;
+  resultado.caminho.includes("/accounts/edit");
 
 if (logado) {
   writeFileSync(MARCA_SESSAO, JSON.stringify({ verificadaEm: new Date().toISOString() }, null, 2), "utf8");

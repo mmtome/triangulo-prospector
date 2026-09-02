@@ -149,9 +149,13 @@ export async function paletaDaImagem(aba, dataUrl) {
         baldes.set(chave, atual);
       }
 
+      /* Dez cores por imagem, não seis. A cor secundária de uma marca ocupa
+         pouca área — o laranja dos botões do Zebu Petshop fica em ~5% do post,
+         fora dos seis primeiros baldes, e some antes de a recorrência entre
+         imagens poder resgatá-lo. */
       return [...baldes.values()]
         .sort((x, y) => y.n - x.n)
-        .slice(0, 6)
+        .slice(0, 10)
         .map((v) => ({
           r: Math.round(v.r / v.n),
           g: Math.round(v.g / v.n),
@@ -162,6 +166,112 @@ export async function paletaDaImagem(aba, dataUrl) {
   } catch {
     return [];
   }
+}
+
+/**
+ * A paleta da MARCA, lida no conjunto das imagens — não numa só.
+ *
+ * O erro que isto conserta: o Zebu Petshop posta tudo sobre um fundo turquesa
+ * com botão laranja. A foto de perfil dele é um logo de touro, e sozinha
+ * devolveu amarelo. A proposta saiu amarela para uma marca turquesa.
+ *
+ * A regra que separa cor de marca de cor de foto é a RECORRÊNCIA: o turquesa
+ * aparece em oito de oito posts porque é a identidade; o marrom do gato aparece
+ * num post porque é o assunto daquele post. Por isso o ranking pesa primeiro em
+ * quantas imagens a cor apareceu, e só depois em quanto ela ocupa.
+ *
+ * Os matizes entram em baldes de 15° para o mesmo turquesa em iluminações
+ * diferentes contar como uma cor só, em vez de virar seis quase-empates.
+ */
+export async function paletaDoConjunto(aba, dataUrls) {
+  const imagens = (dataUrls || []).filter(Boolean);
+  if (!imagens.length) return null;
+
+  const baldes = new Map(); // matiz → { imagens:Set, peso, r, g, b, n }
+
+  for (let i = 0; i < imagens.length; i++) {
+    const cores = await paletaDaImagem(aba, imagens[i]);
+
+    /* Cada imagem vota uma vez por matiz. Sem isto um post com fundo turquesa
+       inteiro daria seis votos de turquesa e a recorrência viraria contagem de
+       pixel com outro nome. */
+    const vistosNestaImagem = new Set();
+
+    for (let posicao = 0; posicao < cores.length; posicao++) {
+      const c = cores[posicao];
+      const [h, s] = rgbParaHsl(c.r, c.g, c.b);
+      if (s < 0.22) continue; // cinza não é identidade
+
+      const balde = Math.round(h * 24) % 24;
+      if (vistosNestaImagem.has(balde)) continue;
+      vistosNestaImagem.add(balde);
+
+      /* O VOTO PESA PELA ÁREA, pela posição da cor dentro da imagem.
+         Recorrência pura elegia o bege: pelo de bicho aparece em 9 de 9 posts
+         de pet shop. Mas pelo nunca é a MAIOR área — o fundo é. No post do gato
+         do Zebu, o turquesa é a cor nº 1 e o gato é a nº 2. Contar 5 pontos
+         para a primeira cor, 4 para a segunda e assim por diante separa fundo
+         de assunto sem lista de cores proibidas. */
+      const atual = baldes.get(balde) || { imagens: new Set(), peso: 0, sat: 0, r: 0, g: 0, b: 0, n: 0 };
+      atual.imagens.add(i);
+      /* O voto é a MASSA DE PIXEL, somada entre as imagens.
+         É o sinal que eu tinha e joguei fora ao tentar votar por posição: nas
+         fotos do Zebu o turquesa ocupa 2515, 1676, 770 e 1619 pixels da amostra
+         — o bege do pelo ocupa 262. Fundo de marca é área; assunto de foto não
+         é. Recorrência sozinha empatava os dois em 9 de 9 imagens. */
+      atual.peso += c.peso || 1;
+      /* PICO de croma do matiz, não média. Com dez cores por imagem o mesmo
+         turquesa entra em versões lavadas (sombra, reflexo), e a média puxava
+         a saturação do balde para baixo até um amarelo quebrado ganhar dele.
+         O que importa é se aquele matiz aparece VIBRANTE em algum lugar — cor
+         de marca aparece; pelo e madeira não aparecem em lugar nenhum. */
+      if (s > atual.sat) {
+        // O balde é REPRESENTADO pela sua cor mais vibrante, não pela média.
+        // Um balde de 15° junta o laranja #f48543 e o marrom #a35c3a, e a média
+        // dos dois é uma lama que não existe em lugar nenhum da marca.
+        atual.sat = s;
+        atual.r = c.r; atual.g = c.g; atual.b = c.b;
+      }
+      atual.n++;
+      baldes.set(balde, atual);
+    }
+  }
+
+  if (!baldes.size) return null;
+
+  /* Recorrência sozinha não basta, e o Zebu Petshop mostrou por quê: bege de
+     pelo apareceu em 9 de 9 imagens — todo post de pet shop tem bicho — e
+     ganhou do turquesa da marca, que aparecia nas mesmas 9.
+
+     O desempate é o CROMA. Cor de marca é escolhida e vibrante; pelo, pele,
+     madeira e concreto são tons quebrados. O turquesa do Zebu tem saturação
+     0,98 contra 0,51 do bege, e multiplicar recorrência por saturação inverte
+     o ranking sem precisar de lista de cores proibidas. */
+  const ranking = [...baldes.values()]
+    .map((v) => {
+      const saturacao = v.sat;
+      return {
+        r: v.r,
+        g: v.g,
+        b: v.b,
+        recorrencia: v.imagens.size,
+        saturacao,
+        nota: v.peso * saturacao,
+      };
+    })
+    .sort((a, b) => b.nota - a.nota);
+
+  /* Uma cor que apareceu em UMA imagem só não é identidade, é assunto. Com
+     poucas imagens o piso é 1, senão um conjunto de 2 fotos nunca decidiria. */
+  const piso = imagens.length >= 4 ? 2 : 1;
+  const daMarca = ranking.filter((c) => c.recorrencia >= piso);
+
+  const paleta = derivarPaleta(daMarca.length ? daMarca : ranking);
+  if (paleta) {
+    paleta.recorrencia = (daMarca[0] || ranking[0]).recorrencia;
+    paleta.imagensLidas = imagens.length;
+  }
+  return paleta;
 }
 
 /**
@@ -184,13 +294,16 @@ export function derivarPaleta(cores) {
   // Cor de marca com croma de menos vira cinza no site inteiro.
   const sBase = Math.max(s, 0.45);
 
-  /* Um segundo matiz só entra como destaque se for realmente outro — abaixo de
-     ~15% de distância no círculo é a mesma cor com outra luz, e usar as duas
-     como "primária e destaque" faz a página parecer um degradê sem intenção. */
+  /* O destaque tem duas exigências, e a segunda foi aprendida no Zebu Petshop:
+     precisa ser outro matiz (abaixo de ~15% no círculo é a mesma cor com outra
+     luz), e precisa ser VIBRANTE. Com o piso antigo de 0,25 o segundo lugar
+     virava o bege do pelo dos bichos — que aparece em toda foto de pet shop e
+     não é decisão de ninguém. O laranja dos botões do Zebu passa de 0,8; pelo,
+     madeira e concreto ficam abaixo de 0,55. */
   const destaque = cores.slice(1).find((c) => {
     const [h2, s2] = rgbParaHsl(c.r, c.g, c.b);
     const dist = Math.min(Math.abs(h2 - h), 1 - Math.abs(h2 - h));
-    return dist > 0.15 && s2 > 0.25;
+    return dist > 0.15 && s2 >= 0.55;
   });
 
   return {

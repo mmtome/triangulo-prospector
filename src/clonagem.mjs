@@ -21,7 +21,7 @@
 import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { baixarComoDataUrl, paletaDaImagem, derivarPaleta, montarMarca } from "./identidade.mjs";
+import { baixarComoDataUrl, paletaDoConjunto, montarMarca } from "./identidade.mjs";
 import { acharModelo } from "./modelos.mjs";
 
 const RAIZ = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -78,6 +78,12 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
   let logo = null;
   let paleta = null;
 
+  /* Tudo que for baixado alimenta a leitura de cor — logo E posts.
+     Ler só o avatar foi o erro que pintou o Zebu Petshop de amarelo: o logo
+     dele é um touro laranja sobre claro, mas a marca inteira é turquesa com
+     laranja, e isso só aparece olhando o conjunto dos posts. */
+  const imagensParaPaleta = [];
+
   const urlAvatar = lead.instagram?.avatar || null;
   if (!urlAvatar) {
     /* Três motivos diferentes para não haver logo, e eles pedem ações opostas:
@@ -100,14 +106,7 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
       const bin = decodificar(dataUrl);
       writeFileSync(join(pasta, "logo" + bin.extensao), bin.bytes);
       logo = { extensao: bin.extensao };
-
-      const cores = await paletaDaImagem(aba, dataUrl);
-      paleta = derivarPaleta(cores);
-      if (!paleta) {
-        ressalvas.push(
-          "A foto de perfil não tem cor de marca legível (logo preto e branco, provavelmente) — paleta do modelo mantida.",
-        );
-      }
+      imagensParaPaleta.push(dataUrl);
     }
   }
 
@@ -123,11 +122,9 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
 
      A grade só vem com sessão logada (`npm run login`); sem ela a lista chega
      vazia e o Google assume, como antes. */
-  const doInstagram = lead.instagram?.posts || [];
+  const doInstagram = lead.instagram?.fotosDoPerfil || [];
   const doGoogle = lead.gmn?.fotosUrls || [];
   const urls = [...doInstagram, ...doGoogle].slice(0, MAX_FOTOS);
-  const fonteFotos = doInstagram.length ? "Instagram" : "Google Meu Negócio";
-  let primeiraFoto = null;
 
   for (const url of urls) {
     const dataUrl = await baixarComoDataUrl(url);
@@ -136,25 +133,33 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
     if (!bin) continue;
     writeFileSync(join(pasta, "foto-" + (fotos.length + 1) + bin.extensao), bin.bytes);
     fotos.push({ extensao: bin.extensao, origem: doInstagram.includes(url) ? "instagram" : "gmn" });
-    if (!primeiraFoto) primeiraFoto = dataUrl;
+    imagensParaPaleta.push(dataUrl);
   }
 
-  /* Paleta pelas fotos do Google quando o avatar não veio.
-     Não é refinamento: o Instagram limita o IP com frequência, e é justamente
-     o perfil bloqueado que deixa a proposta sem logo E sem cor. A fachada e a
-     vitrine carregam a cor da marca — menos exata que o logo, mas muito melhor
-     que devolver o amarelo da Cabana Pet para um pet shop azul. */
-  if (!paleta && primeiraFoto) {
-    const cores = await paletaDaImagem(aba, primeiraFoto);
-    paleta = derivarPaleta(cores);
-    if (paleta) {
-      paleta.origem = "foto do " + fonteFotos;
+  /* ── paleta, lida no conjunto ──────────────────────────────────────────── */
+
+  paleta = await paletaDoConjunto(aba, imagensParaPaleta);
+
+  if (paleta) {
+    paleta.origem =
+      (logo ? "logo + " : "") +
+      fotos.length +
+      " imagens do " +
+      (doInstagram.length ? "Instagram" : "Google");
+
+    /* Cor que apareceu numa imagem só é do assunto daquele post, não da marca.
+       Quando é o melhor que existe, a proposta sai assim mesmo — mas dizendo. */
+    if (paleta.recorrencia < 2) {
       ressalvas.push(
-        "Sem foto de perfil: a paleta saiu da primeira foto do " + fonteFotos + ", não do logo. Confira antes de mandar.",
+        "A cor principal apareceu em uma imagem só — pode ser do assunto do post, não da marca. Confira antes de mandar.",
       );
     }
-  } else if (paleta) {
-    paleta.origem = "foto de perfil do Instagram";
+  } else {
+    ressalvas.push(
+      imagensParaPaleta.length
+        ? "Nenhuma cor de marca legível nas imagens — paleta do modelo mantida."
+        : "Sem imagem nenhuma para ler cor — paleta do modelo mantida.",
+    );
   }
 
   if (!fotos.length) {

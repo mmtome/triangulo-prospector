@@ -11,9 +11,12 @@
  * preciso desembrulhar para saber se aponta para um site de verdade, para um
  * agregador (Linktree e parentes) ou só para o WhatsApp.
  *
- * O que NÃO dá para ler: a data do último post. A grade de posts fica atrás do
- * login. A frequência é estimada pelo volume de posts, e a UI deixa isso
- * explícito em vez de fingir que sabe.
+ * O que NÃO dá para ler: a data do último post. A frequência é estimada pelo
+ * volume de posts, e a UI deixa isso explícito em vez de fingir que sabe.
+ *
+ * A grade de posts fica atrás do muro para visitante anônimo. Com sessão salva
+ * (`npm run login`) ela aparece, e é dela que saem as fotos da proposta — as
+ * imagens que o próprio dono escolheu publicar.
  */
 
 import { sleep } from "../cdp.mjs";
@@ -230,7 +233,7 @@ export async function lerPerfil(aba, handle) {
 
          O filtro por 150px descarta avatar de comentário e ícone de interface,
          que aparecem no mesmo <img> e entrariam como se fossem post. */
-      posts: [
+      gradeFotos: [
         ...new Set(
           [...document.querySelectorAll("main img, article img")]
             .filter((i) => (i.naturalWidth || i.width || 0) >= 150)
@@ -316,9 +319,12 @@ export async function lerPerfil(aba, handle) {
        arquivo na hora da clonagem, nunca guardar o link e voltar depois. */
     avatar: bruto.ogImage || null,
 
-    /* Fotos dos posts. Lista vazia é o normal sem sessão logada — a grade fica
-       atrás do muro. Quando vem preenchida, é a melhor imagem disponível do
-       negócio, e a clonagem prefere estas às do Google. */
-    posts: bruto.posts || [],
+    /* Fotos da grade. NÃO se chama `posts`: esse nome já é a CONTAGEM de posts,
+       que alimenta o eixo de esforço da pontuação. Usar o mesmo nome trocou um
+       número por um array e teria corrompido a nota de todo lead — o tipo de
+       erro que não levanta exceção, só entrega lead frio como quente.
+
+       Lista vazia é o normal sem sessão logada: a grade fica atrás do muro. */
+    fotosDoPerfil: bruto.gradeFotos || [],
   };
 }
