@@ -110,6 +110,16 @@ h2 {
 label { display: block; margin-bottom: 12px; }
 label > span { display: block; margin-bottom: 5px; font-size: 12px; color: var(--muted); }
 
+/* Dica sob o campo. Existe porque "quantidade" já significou outra coisa e a
+   diferença entre avaliar N e entregar N muda o tempo da varredura. */
+label > .dica {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+
 input[type="text"], input[type="number"], select, textarea {
   width: 100%;
   padding: 9px 11px;

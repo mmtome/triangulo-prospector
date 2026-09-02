@@ -3,7 +3,7 @@
 Software web que varre o **Google Meu Negócio** e o **Instagram** atrás de
 clientes para a agência, e classifica cada um por **temperatura de venda**.
 
-Você preenche nicho, cidade e quantidade. Ele devolve os leads ordenados, com o
+Você preenche nicho, cidade e quantos leads quer. Ele devolve os leads ordenados, com o
 contato, o diagnóstico do que falta em cada um e o motivo da nota — e manda os
 escolhidos direto para o funil do CRM no gestor.
 
@@ -16,6 +16,26 @@ npm start                # http://localhost:4546
 22+ e o Google Chrome instalado — o que importa porque o projeto mora no Google
 Drive, onde `npm install` escreve dezenas de milhares de arquivos que o Drive
 tenta sincronizar um a um.
+
+---
+
+## "Quantos leads entregar" entrega leads, não avaliações
+
+O campo é o alvo de leads **aptos**. Pedir 20 devolve 20 — ele continua puxando
+do mapa e avaliando até fechar a cota, porque cerca de metade da fila cai no
+descarte e avaliar exatamente 20 devolvia 10.
+
+Isso tem um teto: **3x o alvo**. Num nicho onde quase todo mundo já tem site não
+existem 20 leads para achar, e sem limite a varredura desceria o mapa inteiro
+tomando bloqueio. Quando o teto é atingido — ou quando o mapa acaba antes — a
+tela diz qual dos dois aconteceu, porque as duas causas pedem ações opostas:
+teto batido é nicho saturado (troque o nicho), mapa esgotado é cidade pequena
+para esse nicho (troque a cidade).
+
+A conta do alvo é refeita a cada lead com o **descarte final**, não com o
+precoce. É o único jeito de a cota valer: o descarte final depende de saber se o
+Bing caiu e se o Instagram limitou o IP, e essa informação só existe com o laço
+já andado.
 
 ---
 

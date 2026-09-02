@@ -20,6 +20,7 @@ const estado = {
   filtro: null,      // null = todas as temperaturas
   rodando: false,
   fonte: null,       // EventSource
+  alvoLeads: 20,     // quantos leads a varredura prometeu entregar
 };
 
 const TEMPERATURAS = [
@@ -137,12 +138,21 @@ $("#formulario").addEventListener("submit", async (ev) => {
   $("#btnProspectar").textContent = "Prospectando…";
   $("#progresso").classList.add("ativo");
   $("#contador").textContent = "0";
-  $("#contadorAlvo").textContent = "de até " + corpo.quantidade;
+  $("#contadorAlvo").textContent = "de " + corpo.quantidade + " leads";
+  estado.alvoLeads = corpo.quantidade;
   $("#barraInterna").style.width = "0%";
 
   desenhar();
   ouvir(dados.id, corpo.quantidade);
 });
+
+/* A barra mede o alvo de leads. Medir lugares avaliados faria ela encher e
+   parar em 33% numa varredura bem-sucedida, porque o mapa agora colhe até 3x
+   o alvo e o laço para assim que a cota fecha. */
+function avancarBarra() {
+  const alvo = estado.alvoLeads || 1;
+  $("#barraInterna").style.width = Math.min(100, (estado.leads.length / alvo) * 100) + "%";
+}
 
 function ouvir(id, alvo) {
   if (estado.fonte) estado.fonte.close();
@@ -156,15 +166,17 @@ function ouvir(id, alvo) {
     if (e.tipo === "status") {
       $("#statusTexto").textContent = e.texto;
     } else if (e.tipo === "encontrados") {
-      $("#contadorAlvo").textContent = "de " + e.total + " no mapa";
-      $("#statusTexto").textContent = "Analisando " + e.total + " estabelecimentos…";
+      if (e.alvoLeads) estado.alvoLeads = e.alvoLeads;
+      $("#contadorAlvo").textContent = "de " + (e.alvoLeads || e.total) + " leads";
+      $("#statusTexto").textContent =
+        "Analisando " + e.total + " estabelecimentos até juntar " + (e.alvoLeads || e.total) + " leads…";
     } else if (e.tipo === "lead-pronto") {
       // Evita duplicar quando o SSE reenvia o histórico numa reconexão.
       if (!estado.leads.some((l) => l.gmn?.placeId && l.gmn.placeId === e.lead.gmn?.placeId)) {
         estado.leads.push(e.lead);
       }
       $("#contador").textContent = String(estado.leads.length);
-      $("#barraInterna").style.width = Math.min(100, ((e.indice + 1) / e.total) * 100) + "%";
+      avancarBarra();
       desenhar();
     } else if (e.tipo === "lead-descartado") {
       // Não entra na lista — só na contagem. O motivo fica guardado porque uma
@@ -172,7 +184,7 @@ function ouvir(id, alvo) {
       if (!estado.descartados.some((d) => d.gmn?.placeId && d.gmn.placeId === e.lead.gmn?.placeId)) {
         estado.descartados.push(e.lead);
       }
-      $("#barraInterna").style.width = Math.min(100, ((e.indice + 1) / e.total) * 100) + "%";
+      avancarBarra();
       desenhar();
     } else if (e.tipo === "fim") {
       terminar();
@@ -180,9 +192,11 @@ function ouvir(id, alvo) {
       estado.descartados = e.resultado.descartados || [];
       estado.parametros = e.resultado.parametros;
       $("#statusTexto").textContent =
-        e.resultado.total + " leads de site em " + (e.resultado.avaliados ?? e.resultado.total) +
+        e.resultado.total + " leads de site" +
+        (e.resultado.pedidos ? " de " + e.resultado.pedidos + " pedidos" : "") +
+        " em " + (e.resultado.avaliados ?? e.resultado.total) +
         " avaliados, em " + e.resultado.duracaoSegundos + "s.";
-      avisarSobreBusca(e.resultado.busca);
+      if (!avisarSobreBusca(e.resultado.busca)) avisarSobreAlvo(e.resultado);
       desenhar();
       carregarDiagnostico();
     } else if (e.tipo === "erro") {
@@ -211,31 +225,60 @@ function terminar() {
  * leads sem @ são os que ficaram sem ser avaliados.
  */
 function avisarSobreBusca(busca) {
-  if (!busca) return;
+  if (!busca) return false;
 
   // O muro de login do Instagram é o pior dos casos e vem primeiro: sem ele o
   // eixo de esforço zera em todo mundo e a cidade inteira sai gelada.
   if (busca.instagramBloqueado) {
-    return avisar("erro",
+    avisar("erro",
       "<b>O Instagram exigiu login em todos os perfis desta varredura.</b> " +
       "É o limite de acessos deste IP (nenhum perfil foi lido em " + busca.instagramBloqueios + " tentativas). " +
       "<b>As notas desta lista não valem</b> — sem os posts e seguidores, o eixo de esforço zera " +
       "e todo lead parece gelado. Espere algumas horas e rode de novo.");
+    return true;
   }
 
-  if (busca.bloqueado) {
+  if (busca.bloqueado && busca.semInstagram > 0) {
     avisar("erro",
       "<b>O Bing bloqueou a busca no meio da varredura.</b> " +
       busca.semInstagram + " lead(s) ficaram sem @ e estão com <b>nota parcial</b> — " +
       "não é que não tenham Instagram, é que não deu para procurar. " +
       "Rode a mesma busca daqui a alguns minutos: o histórico deduplica pelo Google, " +
       "então ninguém é prospectado duas vezes.");
+  } else if (busca.bloqueado) {
+    /* Bloqueou mas não custou lead: o pool inicial já tinha os perfis. Vermelho
+       aqui treina o usuário a ignorar o aviso vermelho que importa. */
+    avisar("nota",
+      "O Bing bloqueou a busca no fim da varredura, mas <b>nenhum lead ficou sem @</b> — " +
+      "o pool inicial deu conta. Nada a refazer.");
   } else if (busca.semInstagram > busca.pool && busca.semInstagram >= 5) {
     avisar("nota",
       busca.semInstagram + " lead(s) saíram sem Instagram. A busca respondeu normalmente " +
       "(" + busca.consultas + " consultas, " + busca.pool + " perfis no pool), então são " +
       "negócios sem perfil localizável — mas vale conferir um ou dois na mão antes de descartar.");
+  } else {
+    return false;
   }
+  return true;
+}
+
+/* Por que um resultado curto precisa de explicação: o campo promete N leads, e
+   entregar menos parece defeito. Só existem duas causas, e elas pedem ações
+   opostas — teto batido (nicho saturado: mude o nicho ou aceite menos) e mapa
+   esgotado (a cidade não tem mais desse nicho: mude a cidade). */
+function avisarSobreAlvo(r) {
+  const pedidos = r.pedidos;
+  if (!pedidos || r.total >= pedidos) return false;
+
+  const bateuTeto = r.tetoAvaliados && r.avaliados >= r.tetoAvaliados;
+  avisar("nota",
+    "Você pediu <b>" + pedidos + "</b> leads e a varredura entregou <b>" + r.total + "</b>. " +
+    (bateuTeto
+      ? "Ela avaliou " + r.avaliados + " negócios (o teto) e parou: neste nicho a maioria " +
+        "já tem site. Os descartados estão logo abaixo, com o motivo de cada um."
+      : "O mapa acabou antes — só existem " + r.avaliados + " " +
+        "desse nicho na cidade, e os descartados estão logo abaixo com o motivo."));
+  return true;
 }
 
 async function abrirExecucao(id) {
@@ -251,7 +294,7 @@ async function abrirExecucao(id) {
   estado.selecionados.clear();
   estado.filtro = null;
   $("#progresso").classList.remove("ativo");
-  avisarSobreBusca(d.resultado.busca);
+  if (!avisarSobreBusca(d.resultado.busca)) avisarSobreAlvo(d.resultado);
   desenhar();
 }
 

@@ -49,6 +49,18 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
   const inicio = Date.now();
   const completa = profundidade === "completa";
 
+  /* "quantidade" é o alvo de leads ENTREGUES, não de negócios avaliados.
+     Cerca de metade da fila cai no descarte — "já tem site" é o maior corte —
+     então avaliar exatamente 20 devolvia 10, e o campo prometia uma coisa e
+     entregava outra. Agora o laço continua puxando do mapa até juntar o alvo.
+
+     O teto existe porque a promessa não pode ser infinita: num nicho saturado
+     de sites não há 20 leads para achar, e sem limite a varredura desceria o
+     mapa inteiro tomando bloqueio. 3x é o que a taxa observada de descarte
+     (~50%) justifica, com folga para um nicho pior que a média. */
+  const alvoLeads = quantidade;
+  const tetoAvaliados = Math.min(120, quantidade * 3);
+
   // Carregado ANTES da varredura, para o histórico não conter esta execução.
   // Prospectar "clínica odontológica" e depois "dentista" na mesma cidade traz
   // muita gente repetida, e mandar de novo ao gestor só engorda a anotação.
@@ -68,6 +80,7 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
 
   const leads = [];
   const descartados = [];
+  let avaliados = 0;
 
   try {
     aoEvento({ tipo: "status", texto: "Buscando " + termo + " em " + cidade + " no Google Maps…" });
@@ -76,14 +89,20 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
       termo,
       cidade,
       uf,
-      alvo: quantidade,
+      alvo: tetoAvaliados,
       aoAndar: ({ encontrados, alvo }) =>
         aoEvento({ tipo: "status", texto: "Rolando o mapa — " + encontrados + " de " + alvo + " encontrados…" }),
     });
 
     if (erro) throw new Error(erro);
 
-    aoEvento({ tipo: "encontrados", total: lugares.length, consulta });
+    aoEvento({
+      tipo: "encontrados",
+      total: lugares.length,
+      consulta,
+      alvoLeads,
+      teto: tetoAvaliados,
+    });
 
     // Uma consulta coletiva antes da fila. Colhe dezenas de perfis locais de
     // uma vez, e cada lead que casa com o pool deixa de gastar uma consulta —
@@ -111,6 +130,24 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
       } else {
         leads.push(lead);
         aoEvento({ tipo: "lead-pronto", indice: i, total: lugares.length, lead });
+      }
+
+      avaliados = i + 1;
+
+      /* Alvo atingido? Quem decide é o descarte final, e ele depende de saber
+         se o Bing caiu e se o Instagram limitou o IP — informação que só existe
+         agora, com o laço andado. Por isso a conta é refeita a cada lead, e sem
+         marcar nada: um lead que passaria agora pode ser descartado no fim se a
+         coleta piorar daqui para frente. */
+      if (leads.length >= alvoLeads) {
+        const ctx = {
+          buscaDesligada: buscador.estado.desligado,
+          instagramBloqueado: estadoInstagram.bloqueios > 0 && estadoInstagram.lidos === 0,
+        };
+        if (leads.filter((l) => !descarteFinal(l, ctx)).length >= alvoLeads) {
+          aoEvento({ tipo: "status", texto: "Alvo de " + alvoLeads + " leads atingido." });
+          break;
+        }
       }
 
       // Um respiro entre leads. O Maps e o Bing aceitam um humano navegando;
@@ -156,6 +193,11 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
     executadoEm: new Date().toISOString(),
     duracaoSegundos: Math.round((Date.now() - inicio) / 1000),
     total: aptos.length,
+    /* A tela precisa dos três números para explicar um resultado curto: pedi
+       20, avaliei 47, entreguei 14 — e o teto de 60 não foi atingido, logo o
+       mapa acabou. Sem isso "14 de 20" parece defeito. */
+    pedidos: alvoLeads,
+    tetoAvaliados,
     porTemperatura,
     /* Descartados não entram na lista, mas entram na contagem. Uma varredura
        que devolve 3 de 40 pode ser um nicho saturado de sites ou uma coleta
@@ -169,7 +211,7 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
       descarte: l.descarte,
     })),
     porDescarte: contarDescartes(descartados),
-    avaliados: aptos.length + descartados.length,
+    avaliados: Math.max(avaliados, aptos.length + descartados.length),
     // Saúde da busca. Vai para a tela porque "11 leads sem Instagram" significa
     // coisas opostas conforme o Bing tenha respondido ou bloqueado, e o usuário
     // precisa saber em qual dos dois mundos está antes de confiar nas notas.
