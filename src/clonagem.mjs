@@ -5,7 +5,7 @@
  *
  *   marca.json    identidade e dados do negócio (ver src/identidade.mjs)
  *   logo.png      foto de perfil do Instagram
- *   foto-1.jpg…   fotos do Google Meu Negócio
+ *   foto-1.jpg…   fotos dos posts do Instagram, ou do Google como reserva
  *
  * O site NÃO é copiado para dentro dela. O modelo é servido do `dist/` dele
  * mesmo e busca o `marca.json` em tempo de execução — então a pasta do clone
@@ -80,10 +80,17 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
 
   const urlAvatar = lead.instagram?.avatar || null;
   if (!urlAvatar) {
+    /* Três motivos diferentes para não haver logo, e eles pedem ações opostas:
+       perfil bloqueado é para tentar de novo daqui a algumas horas; perfil sem
+       foto é para pedir o logo ao cliente; sem @ é para procurar na mão. Um
+       "sem logo" genérico esconderia justamente a diferença. */
     ressalvas.push(
-      lead.instagram?.existe
-        ? "O perfil não expôs foto de perfil — logo e paleta ficaram com o padrão do modelo."
-        : "Sem Instagram encontrado: sem logo e sem paleta da marca.",
+      lead.instagram?.bloqueado
+        ? "O Instagram exigiu login e o perfil @" + lead.instagram.handle +
+          " não foi lido — sem logo. É limite de acessos do seu IP; tente de novo em algumas horas."
+        : lead.instagram?.existe
+          ? "O perfil não expôs foto de perfil — sem logo."
+          : "Sem Instagram encontrado: sem logo.",
     );
   } else {
     const dataUrl = await baixarComoDataUrl(urlAvatar);
@@ -104,10 +111,23 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
     }
   }
 
-  /* ── fotos do GMN ──────────────────────────────────────────────────────── */
+  /* ── fotos ─────────────────────────────────────────────────────────────── */
 
   const fotos = [];
-  const urls = (lead.gmn?.fotosUrls || []).slice(0, MAX_FOTOS);
+
+  /* Instagram primeiro, Google depois. As duas fontes não têm o mesmo valor: a
+     grade de posts é o que o dono escolheu mostrar — produto arrumado, luz
+     pensada, a marca como ele quer ser visto. A foto do Google costuma ser a
+     fachada tirada por um cliente no contra-luz. Numa proposta, isso é a
+     diferença entre o cliente se reconhecer e achar o site genérico.
+
+     A grade só vem com sessão logada (`npm run login`); sem ela a lista chega
+     vazia e o Google assume, como antes. */
+  const doInstagram = lead.instagram?.posts || [];
+  const doGoogle = lead.gmn?.fotosUrls || [];
+  const urls = [...doInstagram, ...doGoogle].slice(0, MAX_FOTOS);
+  const fonteFotos = doInstagram.length ? "Instagram" : "Google Meu Negócio";
+  let primeiraFoto = null;
 
   for (const url of urls) {
     const dataUrl = await baixarComoDataUrl(url);
@@ -115,14 +135,33 @@ export async function clonar(lead, { modelo, aba, varredura = null }) {
     const bin = decodificar(dataUrl);
     if (!bin) continue;
     writeFileSync(join(pasta, "foto-" + (fotos.length + 1) + bin.extensao), bin.bytes);
-    fotos.push({ extensao: bin.extensao });
+    fotos.push({ extensao: bin.extensao, origem: doInstagram.includes(url) ? "instagram" : "gmn" });
+    if (!primeiraFoto) primeiraFoto = dataUrl;
+  }
+
+  /* Paleta pelas fotos do Google quando o avatar não veio.
+     Não é refinamento: o Instagram limita o IP com frequência, e é justamente
+     o perfil bloqueado que deixa a proposta sem logo E sem cor. A fachada e a
+     vitrine carregam a cor da marca — menos exata que o logo, mas muito melhor
+     que devolver o amarelo da Cabana Pet para um pet shop azul. */
+  if (!paleta && primeiraFoto) {
+    const cores = await paletaDaImagem(aba, primeiraFoto);
+    paleta = derivarPaleta(cores);
+    if (paleta) {
+      paleta.origem = "foto do " + fonteFotos;
+      ressalvas.push(
+        "Sem foto de perfil: a paleta saiu da primeira foto do " + fonteFotos + ", não do logo. Confira antes de mandar.",
+      );
+    }
+  } else if (paleta) {
+    paleta.origem = "foto de perfil do Instagram";
   }
 
   if (!fotos.length) {
     ressalvas.push(
       urls.length
-        ? "As fotos do Google não baixaram — a galeria ficou com as do modelo."
-        : "O Google Meu Negócio deste lead não tem foto pública — a galeria ficou com as do modelo.",
+        ? "As fotos não baixaram — a galeria ficou com as do modelo."
+        : "Nem o Instagram nem o Google deste lead têm foto pública — a galeria ficou com as do modelo.",
     );
   }
 

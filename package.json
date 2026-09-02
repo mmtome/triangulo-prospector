@@ -10,6 +10,9 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
-    "cli": "node cli.mjs"
+    "cli": "node cli.mjs",
+    "login": "node login.mjs",
+    "importar-sessao": "node importar-sessao.mjs",
+    "conferir-sessao": "node conferir-sessao.mjs"
   }
 }

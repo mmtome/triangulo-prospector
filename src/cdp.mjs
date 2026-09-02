@@ -9,9 +9,29 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+/**
+ * Perfil persistente do Chrome, onde mora a sessão do Instagram.
+ *
+ * Fora do projeto de propósito: é dado de sessão, não código, e uma pasta de
+ * perfil do Chrome tem milhares de arquivos que nada têm a ver com o app.
+ */
+export const PERFIL_FIXO = join(homedir(), ".triangulo-prospector-sessao");
+
+/**
+ * Já existe sessão salva?
+ *
+ * A marca é um arquivo que `login.mjs` só escreve depois de CONFERIR que o
+ * Instagram abriu um perfil sem redirecionar para /accounts/login. Checar a
+ * existência da pasta do perfil não serve: ela nasce no primeiro segundo em que
+ * o Chrome roda, mesmo sem ninguém ter logado — e a varredura seguiria achando
+ * que está logada enquanto tomava bloqueio em todo lead.
+ */
+export const MARCA_SESSAO = join(PERFIL_FIXO, "sessao-verificada.json");
+export const temSessao = () => existsSync(MARCA_SESSAO);
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,7 +73,7 @@ export function acharChrome() {
  * usuário: o Chrome recusa a porta de depuração quando já há uma instância com
  * aquele perfil aberta, e a sessão logada do usuário não deve ir para o scraper.
  */
-export async function abrirNavegador({ headless = true, porta = 0 } = {}) {
+export async function abrirNavegador({ headless = true, porta = 0, perfilFixo = false } = {}) {
   const chrome = acharChrome();
   if (!chrome) {
     throw new Error(
@@ -61,12 +81,49 @@ export async function abrirNavegador({ headless = true, porta = 0 } = {}) {
     );
   }
 
-  const perfil = mkdtempSync(join(tmpdir(), "triangulo-prospector-"));
+  /* Perfil fixo = a sessão do Instagram sobrevive entre varreduras.
+     Visitante anônimo tem a cota mais curta que existe: passadas algumas
+     dezenas de visitas do mesmo IP, o Instagram redireciona TODO perfil para
+     /accounts/login?is_from_rle e a varredura sai sem @, sem logo e sem paleta.
+     Logado a cota é outra — e a grade de posts, que é a fonte boa de foto,
+     deixa de ficar atrás do muro.
+
+     Continua não sendo o perfil pessoal do Chrome: é uma pasta só deste app,
+     para uma conta secundária e descartável. Ver `npm run login`. */
+  /* Terceiro modo: o perfil REAL do usuário.
+     Copiar os cookies do Chrome para cá não funciona desde o Chrome 127 — o
+     App-Bound Encryption prende a chave à instância do navegador, justamente
+     para impedir cópia de sessão. Então, para reaproveitar um login que já
+     existe, o único caminho é abrir o próprio perfil.
+
+     NÃO FUNCIONA NO CHROME 136+ — testado no 152, com o Chrome fechado.
+     A partir do 136 o Chrome recusa `--remote-debugging-port` quando o
+     `--user-data-dir` é o perfil padrão do usuário, e o navegador simplesmente
+     não sobe a porta. É a mesma defesa que o App-Bound Encryption, pelo outro
+     lado: as duas rotas para reaproveitar um login existente foram fechadas de
+     propósito, e não há contorno legítimo.
+
+     O caminho que resta é logar DENTRO do perfil do Prospector (`npm run
+     login`). Este modo fica aqui documentado para ninguém tentar de novo. */
+  const perfilReal = process.env.CHROME_PERFIL_REAL;
+  const usarReal = perfilFixo && perfilReal;
+
+  const perfil = usarReal
+    ? perfilReal
+    : perfilFixo
+      ? PERFIL_FIXO
+      : mkdtempSync(join(tmpdir(), "triangulo-prospector-"));
+
+  if (perfilFixo && !usarReal) mkdirSync(perfil, { recursive: true });
+
   const p = porta || 9300 + Math.floor(Math.random() * 600);
 
   const args = [
     `--remote-debugging-port=${p}`,
     `--user-data-dir=${perfil}`,
+    // Qual perfil dentro da pasta. Só importa no modo "perfil real", onde o
+    // Chrome guarda várias contas lado a lado (Default, Profile 1, Profile 9…).
+    ...(usarReal ? [`--profile-directory=${process.env.CHROME_PERFIL_DIR || "Default"}`] : []),
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-extensions",
@@ -98,6 +155,10 @@ export async function abrirNavegador({ headless = true, porta = 0 } = {}) {
 
   const fechar = () => {
     try { proc.kill(); } catch { /* já morreu */ }
+    // Perfil fixo NUNCA é apagado: apagá-lo é deslogar, e deslogar devolve o
+    // bloqueio que ele existe para evitar. Só o descartável some.
+    // Nunca apaga perfil que não é nosso — e o fixo perderia o login.
+    if (perfilFixo || usarReal) return;
     // O Chrome ainda está escrevendo no perfil no instante em que morre.
     setTimeout(() => { try { rmSync(perfil, { recursive: true, force: true }); } catch {} }, 1500);
   };

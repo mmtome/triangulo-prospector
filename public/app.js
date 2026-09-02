@@ -67,7 +67,13 @@ async function carregarDiagnostico() {
       '<span class="pino ' + (chromeOk ? "ok" : "ruim") + '" title="' + escapar(d.chrome || "Chrome não encontrado") + '">' +
         '<i class="bolha"></i>Chrome</span>' +
       '<span class="pino ' + (gestorOk ? "ok" : "") + '" title="' + escapar(d.gestor.url) + '">' +
-        '<i class="bolha"></i>Gestor</span>';
+        '<i class="bolha"></i>Gestor</span>' +
+      '<span class="pino ' + (d.instagram?.logado ? "ok" : "") + '" title="' +
+        escapar(
+          d.instagram?.logado
+            ? "Sessão salva — as varreduras navegam logadas"
+            : "Anônimo. Rode `npm run login` para acabar com o bloqueio e liberar as fotos dos posts.",
+        ) + '"><i class="bolha"></i>Instagram</span>';
 
     if (!chromeOk) {
       avisar("erro",
@@ -502,7 +508,8 @@ function cartao(l, i) {
   links.push(
     proposta
       ? '<a class="btn btn-pequeno btn-primario" target="_blank" rel="noopener" href="' +
-        escapar(proposta.url) + '">Abrir proposta</a>'
+        escapar(proposta.publicacao?.url || proposta.url) + '">' +
+        (proposta.publicacao?.url ? "Abrir proposta publicada" : "Abrir proposta (local)") + "</a>"
       : '<button class="btn btn-pequeno btn-primario btn-clonar" data-i="' + i + '">Clonar modelo</button>',
   );
 
@@ -598,7 +605,7 @@ async function clonarLead(i, botao) {
 
   const original = botao.textContent;
   botao.disabled = true;
-  botao.textContent = "Clonando…";
+  botao.textContent = "Clonando e publicando…";
 
   try {
     const r = await fetch("/api/clonar", {
@@ -628,6 +635,9 @@ async function clonarLead(i, botao) {
     partes.push(d.paleta ? "paleta da marca" : "paleta do modelo");
     partes.push(d.fotos + (d.fotos === 1 ? " foto do Google" : " fotos do Google"));
 
+    if (d.publicacao?.url) partes.push("publicada na Vercel");
+    else if (d.publicacao?.erro) partes.push("<b>não publicou</b>: " + escapar(d.publicacao.erro));
+
     if (d.gestor?.erro) {
       partes.push("<b>não entrou no CRM</b>: " + escapar(d.gestor.erro));
     } else if (d.gestor) {
@@ -641,7 +651,9 @@ async function clonarLead(i, botao) {
     avisar(
       d.gestor?.erro ? "nota" : "ok",
       "<b>Proposta gerada</b> — " + escapar(lead.nome) + ": " + partes.join(" · ") +
-        '. <a href="' + escapar(d.url) + '" target="_blank" rel="noopener">Abrir proposta</a>' +
+        '. <a href="' + escapar(d.publicacao?.url || d.url) + '" target="_blank" rel="noopener">' +
+        (d.publicacao?.url ? "Abrir o link do cliente" : "Abrir proposta") + "</a>" +
+        (d.publicacao?.url ? " <code>" + escapar(d.publicacao.url) + "</code>" : "") +
         ressalvas,
     );
 

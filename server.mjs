@@ -22,7 +22,8 @@ import { novoId, salvar, carregar, lerIndice, apagar, paraCSV } from "./src/stor
 import { enviarAoGestor } from "./src/gestor.mjs";
 import { listarModelos, sugerirModelo, acharModelo } from "./src/modelos.mjs";
 import { clonar, listarClones, PASTA_CLONES } from "./src/clonagem.mjs";
-import { abrirNavegador, novaAba, versaoChrome } from "./src/cdp.mjs";
+import { abrirNavegador, novaAba, versaoChrome, temSessao } from "./src/cdp.mjs";
+import { publicar, configurada as publicacaoConfigurada } from "./src/publicar.mjs";
 
 const RAIZ = dirname(fileURLToPath(import.meta.url));
 const PUBLICO = join(RAIZ, "public");
@@ -211,6 +212,7 @@ const servidor = createServer(async (req, res) => {
       return json(res, {
         chrome: versaoChrome(),
         gestor: { url: GESTOR_URL, tokenConfigurado: !!PROSPECTOR_TOKEN },
+        instagram: { logado: temSessao() },
         rodando: rodandoAgora(),
         execucoes: lerIndice().slice(0, 20),
       });
@@ -410,6 +412,18 @@ const servidor = createServer(async (req, res) => {
         navegador?.fechar();
       }
 
+      /* Publica antes de mandar ao CRM: o link é a razão de o lead estar no
+         funil. Falhar aqui não desfaz a clonagem — a proposta continua
+         acessível em /proposta/<slug>/, e a tela diz o que aconteceu. */
+      let publicacao = null;
+      if (corpo.publicar !== false && publicacaoConfigurada()) {
+        try {
+          publicacao = await publicar(resultado.slug);
+        } catch (e) {
+          publicacao = { erro: e.message };
+        }
+      }
+
       // Proposta pronta: agora o lead pode entrar no funil.
       let gestor = null;
       if (corpo.enviarAoGestor !== false) {
@@ -427,7 +441,7 @@ const servidor = createServer(async (req, res) => {
         }
       }
 
-      return json(res, { ...resultado, gestor });
+      return json(res, { ...resultado, publicacao, gestor });
     }
 
     if (rota.startsWith("/api/")) return json(res, { error: "Rota inexistente." }, 404);

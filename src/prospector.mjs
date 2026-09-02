@@ -10,7 +10,7 @@
  * nunca derruba a varredura: ele vira `erro` naquele lead e a fila continua.
  */
 
-import { abrirNavegador, novaAba, sleep } from "./cdp.mjs";
+import { abrirNavegador, novaAba, sleep, temSessao } from "./cdp.mjs";
 import { buscarNoMapa, detalharLugar } from "./sources/gmn.mjs";
 import { lerPerfil, classificarLink, resolverEncurtador } from "./sources/instagram.mjs";
 import { criarBuscador, lerRedesDoSite, semelhanca } from "./sources/busca.mjs";
@@ -67,7 +67,12 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
   const historico = jaVistos();
 
   aoEvento({ tipo: "status", texto: "Abrindo o navegador…" });
-  const navegador = await abrirNavegador({ headless: opcoes.mostrarNavegador !== true });
+  // Usa a sessão salva quando existe: logado, o Instagram entrega o perfil em
+  // vez do muro de login. Sem sessão, segue anônimo e sujeito ao bloqueio.
+  const navegador = await abrirNavegador({
+    headless: opcoes.mostrarNavegador !== true,
+    perfilFixo: temSessao(),
+  });
   const aba = await novaAba(navegador.porta);
 
   // Um buscador por varredura: ele acumula o pool de perfis e conta os
@@ -414,6 +419,12 @@ async function montarLead(aba, lugar, { cidade, uf, completa, buscador, estadoIn
       endereco: gmn.enderecoCompleto || gmn.endereco || null,
       temHorario: gmn.temHorario ?? (gmn.horarioTxt ? true : null),
       fotos: gmn.fotos ?? null,
+      /* As URLs, e não só a contagem. Elas são o material da proposta — e a
+         única fonte de imagem quando o Instagram limita o IP, que é o caso
+         comum. Ficaram de fora desta lista na primeira versão e a clonagem saía
+         sem foto nenhuma, com a coleta funcionando o tempo todo: o objeto
+         montado aqui é uma lista explícita, não um espalhamento. */
+      fotosUrls: gmn.fotosUrls || [],
       siteDeclarado: gmn.site || null,
       fechado: gmn.permanentementeFechado || false,
     },

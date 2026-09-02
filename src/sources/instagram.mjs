@@ -222,6 +222,23 @@ export async function lerPerfil(aba, handle) {
       ogDesc: meta("og:description"),
       ogTitle: meta("og:title"),
       ogImage: meta("og:image"),
+
+      /* A grade de posts. Só existe para sessão logada — anônimo recebe o muro
+         de login no lugar dela, e a lista sai vazia. É a melhor fonte de foto
+         que a proposta pode ter: são as imagens que o próprio dono escolheu
+         publicar, muito acima da fachada fotografada por um cliente no Google.
+
+         O filtro por 150px descarta avatar de comentário e ícone de interface,
+         que aparecem no mesmo <img> e entrariam como se fossem post. */
+      posts: [
+        ...new Set(
+          [...document.querySelectorAll("main img, article img")]
+            .filter((i) => (i.naturalWidth || i.width || 0) >= 150)
+            .map((i) => i.src)
+            .filter((s) => s && /cdninstagram|fbcdn/.test(s)),
+        ),
+      ].slice(0, 12),
+
       corpo: texto.slice(0, 1400),
       externos: externos.slice(0, 5),
       verificado: /Verificado\b/.test(texto.slice(0, 600)),
@@ -298,5 +315,10 @@ export async function lerPerfil(aba, handle) {
        A URL do CDN da Meta expira em horas, então quem usar precisa baixar o
        arquivo na hora da clonagem, nunca guardar o link e voltar depois. */
     avatar: bruto.ogImage || null,
+
+    /* Fotos dos posts. Lista vazia é o normal sem sessão logada — a grade fica
+       atrás do muro. Quando vem preenchida, é a melhor imagem disponível do
+       negócio, e a clonagem prefere estas às do Google. */
+    posts: bruto.posts || [],
   };
 }

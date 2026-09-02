@@ -3,13 +3,13 @@
  *
  * O QUE DÁ E O QUE NÃO DÁ PARA EXTRAIR
  * ────────────────────────────────────
- * A grade de posts do Instagram fica atrás do login, então "as fotos do perfil"
- * não existem como fonte. O que sobra, e basta:
- *
  *   logo    → a foto de perfil do Instagram (og:image). Em pet shop, clínica e
  *             salão ela é o logo em quase todos os perfis.
  *   paleta  → quantizada dessa mesma imagem. É a cor que o dono escolheu.
- *   fotos   → do Google Meu Negócio, que entrega as URLs sem login.
+ *   fotos   → da grade de posts do Instagram; do Google Meu Negócio como
+ *             reserva. A grade só aparece com sessão logada (`npm run login`),
+ *             e é sempre melhor: são as imagens que o próprio dono escolheu
+ *             publicar, não a fachada fotografada por um cliente.
  *   dados   → nome, telefone, endereço, @, nota e avaliações, já coletados.
  *
  * O que NÃO sai daqui é o texto: descrição de serviço, depoimento, redação de
@@ -266,7 +266,7 @@ export function montarMarca(lead, { modelo, paleta, logo, fotos }) {
       paleta,
       // Caminhos relativos: quem clona resolve onde os arquivos vão morar.
       logo: logo ? { arquivo: "logo" + logo.extensao, origem: "instagram" } : null,
-      fotos: fotos.map((f, i) => ({ arquivo: "foto-" + (i + 1) + f.extensao, origem: "gmn" })),
+      fotos: fotos.map((f, i) => ({ arquivo: "foto-" + (i + 1) + f.extensao, origem: f.origem })),
     },
 
     /* A procedência vai junto no arquivo, não num log: quem abrir a proposta
@@ -277,7 +277,7 @@ export function montarMarca(lead, { modelo, paleta, logo, fotos }) {
       temperatura: lead.score?.temperatura || null,
       pontos: lead.score?.total ?? null,
       textoEhDoModelo: true,
-      paletaExtraidaDe: logo ? "foto de perfil do Instagram" : null,
+      paletaExtraidaDe: paleta?.origem ?? null,
     },
   };
 }
