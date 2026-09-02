@@ -36,16 +36,53 @@ const IGNORAR = new Set([
 const GENERICAS =
   /\b(clinica|clinic|consultorio|odontologia|odontologica|odontologico|odonto|dental|dentista|dentistas|medica|medico|saude|estetica|centro|instituto|dr|dra|doutor|doutora|espaco|de|da|do|e|em|the|ltda|me|eireli)\b/g;
 
-/** Tira acento, pontuação e as palavras que toda clínica tem no nome. */
-function chave(txt) {
+/** Só normaliza: caixa baixa, sem acento e sem pontuação. */
+function normalizar(txt) {
   return String(txt || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
-    .replace(GENERICAS, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * As palavras genéricas DESTA varredura: as do termo buscado e as da cidade.
+ *
+ * A lista fixa acima nasceu no nicho de odontologia e não tem como cobrir os
+ * outros. Rodando "pet shop" em Uberaba ela deixava "pet" e "shop" passarem
+ * como prova de identidade, e "Pet Shop Casa do Bicho" casou 50% com
+ * `@rwpetshop` só por elas — junto com mais dez negócios diferentes. Onze leads
+ * com o mesmo perfil, os mesmos seguidores e a mesma nota.
+ *
+ * A regra que sai daí é geral: a palavra que está no termo buscado identifica o
+ * NICHO, nunca o negócio. O mesmo vale para a cidade — "Uberaba" está no nome
+ * de metade deles. Quem identifica é o que sobra depois de tirar as duas.
+ */
+export function genericasDaBusca(termo, cidade) {
+  const doTermo = normalizar(termo).split(" ").filter(Boolean);
+  const daCidade = normalizar(cidade).split(" ").filter(Boolean);
+
+  /* A forma grudada entra junto porque metade dos donos escreve "petshop" numa
+     palavra só. Sem ela, `\bpet\b` não recorta nada dentro de "petshop" e
+     "Lá lunna petshop" continuava casando com `@rwpetshop` pelo pedaço genérico
+     — o mesmo bug, escrito sem espaço. */
+  const grudado = doTermo.length > 1 ? [doTermo.join("")] : [];
+
+  const palavras = [...new Set([...doTermo, ...grudado, ...daCidade])];
+  if (!palavras.length) return null;
+
+  // Mais longas primeiro: "petshop" precisa ser consumido antes de "pet".
+  palavras.sort((a, b) => b.length - a.length);
+  return new RegExp("\\b(" + palavras.join("|") + ")\\b", "g");
+}
+
+/** Tira acento, pontuação e as palavras que não identificam ninguém. */
+function chave(txt, genericasDoNicho = null) {
+  let s = normalizar(txt).replace(GENERICAS, " ");
+  if (genericasDoNicho) s = s.replace(genericasDoNicho, " ");
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -61,14 +98,31 @@ function chave(txt) {
  * Nome sem nada distintivo devolve 0, e 0 aqui significa "não sei" — que é a
  * resposta certa, não uma falha.
  */
-export function semelhanca(nomeNegocio, handle, nomePerfil = "") {
-  const alvo = chave(nomeNegocio);
+export function semelhanca(nomeNegocio, handle, nomePerfil = "", genericasDoNicho = null) {
+  /* O lado do perfil nunca perde as palavras do nicho: o handle vem
+     concatenado ("petshopfabricio"), sem fronteira de palavra por onde
+     recortar, e é nele que o pedaço distintivo do nome precisa ser achado. */
+  const compacto = (chave(handle) + " " + chave(nomePerfil)).replace(/\s/g, "");
+
+  /* Nome inteiro dentro do @ é prova quase certa, e vem antes de qualquer
+     limpeza: "Meu Pet Shop" é genérico de ponta a ponta, mas "meupetshop"
+     dentro de `@meupetshop.ura` não é coincidência. Sem esta regra a limpeza do
+     nicho reduzia o nome a "meu" e perdia o perfil certo — errar para o lado de
+     descartar um casamento bom também é errar.
+
+     O piso de 6 caracteres é o que impede o inverso: "meu" ou "casa" soltos
+     casariam com meio Instagram. E o nome completo é sempre mais longo que o
+     pedaço genérico, então nenhum dos falsos positivos de "pet shop" volta —
+     "porteirapetshop" não cabe em "rwpetshop". */
+  const nomeInteiro = normalizar(nomeNegocio).replace(/\s/g, "");
+  if (nomeInteiro.length >= 6 && compacto.includes(nomeInteiro)) return 1;
+
+  // Daqui para baixo, só o que distingue ESTE negócio conta.
+  const alvo = chave(nomeNegocio, genericasDoNicho);
   if (!alvo) return 0;
 
   const palavras = alvo.split(" ").filter((p) => p.length >= 3);
   if (!palavras.length) return 0;
-
-  const compacto = (chave(handle) + " " + chave(nomePerfil)).replace(/\s/g, "");
 
   const casadas = palavras.filter((p) => compacto.includes(p));
   const massa = casadas.reduce((n, p) => n + p.length, 0);
@@ -127,8 +181,21 @@ function lerSnippets(texto) {
  *     o bloqueio persiste, não somar tropeços isolados. Desligado, os leads
  *     restantes saem com nota parcial e o card diz o porquê.
  */
-export function criarBuscador(aba, { corte = 0.5 } = {}) {
-  const estado = { pool: [], desafios: 0, desligado: false, consultas: 0 };
+export function criarBuscador(aba, { corte = 0.5, termo = "", cidade = "" } = {}) {
+  const estado = {
+    pool: [],
+    desafios: 0,
+    desligado: false,
+    consultas: 0,
+    /* Um perfil do Instagram pertence a um negócio só. Se o mesmo @ ganha em
+       dois leads, um dos dois está errado por definição — e o custo do erro é
+       alto: o perfil traz seguidores, posts e bio, então o lead errado herda a
+       nota inteira de outro. A trava é rede de segurança independente do ajuste
+       da semelhança, que já falhou uma vez com "pet shop". */
+    usados: new Map(),
+  };
+
+  const genericas = genericasDaBusca(termo, cidade);
 
   return {
     estado,
@@ -167,8 +234,8 @@ export function criarBuscador(aba, { corte = 0.5 } = {}) {
      */
     async descobrir({ nome, cidade }) {
       // 1. O pool primeiro: é de graça.
-      const doPool = escolher(estado.pool, nome, corte);
-      if (doPool) return { ...doPool, origem: "pool da busca" };
+      const doPool = escolher(estado.pool, nome, corte, estado, genericas);
+      if (doPool) return marcar(estado, doPool, "pool da busca");
 
       if (estado.desligado) return { bloqueado: true };
 
@@ -201,30 +268,48 @@ export function criarBuscador(aba, { corte = 0.5 } = {}) {
           if (!estado.pool.some((p) => p.handle === c.handle)) estado.pool.push(c);
         }
 
-        const pontuados = pontuarCandidatos(r.candidatos, nome);
+        const pontuados = pontuarCandidatos(r.candidatos, nome, genericas);
         if (pontuados.length) descartados = pontuados.slice(0, 3);
-        if (pontuados[0] && (!melhor || pontuados[0].score > melhor.score)) melhor = pontuados[0];
+
+        const livres = pontuados.filter((c) => !estado.usados.has(c.handle));
+        if (livres[0] && (!melhor || livres[0].score > melhor.score)) melhor = livres[0];
 
         if (melhor && melhor.score >= corte) break;
         await sleep(2500);
       }
 
       if (!melhor || melhor.score < corte) return { handle: null, descartados };
-      return { ...melhor, origem: "busca na web" };
+      return marcar(estado, melhor, "busca na web");
     },
   };
 }
 
+/**
+ * Registra o dono do @ e devolve o achado. Sai por aqui todo handle aceito,
+ * para a trava valer nos dois caminhos — pool e consulta dedicada.
+ */
+function marcar(estado, achado, origem) {
+  estado.usados.set(achado.handle, true);
+  return { ...achado, origem };
+}
+
 /** Pontua e ordena candidatos contra o nome do negócio. */
-function pontuarCandidatos(candidatos, nome) {
+function pontuarCandidatos(candidatos, nome, genericas = null) {
   return candidatos
-    .map((c) => ({ ...c, score: semelhanca(nome, c.handle, c.nome) }))
+    .map((c) => ({ ...c, score: semelhanca(nome, c.handle, c.nome, genericas) }))
     .sort((a, b) => b.score - a.score);
 }
 
-/** Melhor candidato de uma lista, se passar do corte. */
-function escolher(candidatos, nome, corte) {
-  const melhor = pontuarCandidatos(candidatos, nome)[0];
+/**
+ * Melhor candidato ainda **livre**, se passar do corte. Um @ já entregue a
+ * outro negócio sai da disputa em vez de derrubar o lead: o segundo colocado
+ * pode ser o perfil certo, e devolver null aqui perderia o lead por causa do
+ * vizinho.
+ */
+function escolher(candidatos, nome, corte, estado, genericas = null) {
+  const melhor = pontuarCandidatos(candidatos, nome, genericas).find(
+    (c) => !estado.usados.has(c.handle),
+  );
   return melhor && melhor.score >= corte ? melhor : null;
 }
 

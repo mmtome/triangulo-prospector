@@ -72,7 +72,9 @@ export async function prospectar(opcoes, aoEvento = () => {}) {
 
   // Um buscador por varredura: ele acumula o pool de perfis e conta os
   // desafios do Bing para saber quando parar de insistir.
-  const buscador = criarBuscador(aba, { corte: corteSemelhanca });
+  // O termo e a cidade entram aqui porque as palavras deles não identificam
+  // negócio nenhum nesta varredura — ver genericasDaBusca em sources/busca.mjs.
+  const buscador = criarBuscador(aba, { corte: corteSemelhanca, termo, cidade });
 
   // Contagem de muros de login do Instagram. Vive fora do laço porque o limite
   // é do IP, não do perfil: uma vez atingido, todo lead seguinte cai igual.

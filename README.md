@@ -57,6 +57,32 @@ nunca deveriam ter aparecido.
 em vários casos lead melhor que "sem site", porque o dono já provou que se
 importa e ainda assim está mal servido.
 
+### O nicho buscado nunca identifica o negócio
+
+A lista de palavras genéricas nasceu no nicho de odontologia. Rodando **pet
+shop** ela deixava "pet" e "shop" contarem como prova de identidade: "Pet Shop
+Casa do Bicho" casava 50% com `@rwpetshop` só por essas duas palavras — e mais
+dez negócios diferentes junto. Onze leads com o mesmo perfil, os mesmos
+seguidores e a mesma nota. Numa varredura de Uberlândia foram catorze.
+
+Hoje as palavras do **termo buscado** e da **cidade** entram na lista de
+genéricas da varredura, junto da forma grudada ("petshop"), porque metade dos
+donos escreve sem espaço. Quem identifica é o que sobra depois de tirar as três.
+
+Duas salvaguardas em volta:
+
+- **Nome inteiro dentro do @ vale 1.** "Meu Pet Shop" é genérico de ponta a
+  ponta e a limpeza o reduzia a "meu", perdendo o `@meupetshop.ura`, que é o
+  perfil certo. Descartar um casamento bom também é errar.
+- **Um @ por negócio na varredura.** Um perfil pertence a um negócio só; se o
+  mesmo @ ganha duas vezes, uma está errada por definição. O segundo negócio
+  fica com o próximo candidato acima do corte, não com nada.
+
+`node teste-semelhanca.mjs` roda a regra contra as varreduras salvas em `data/`
+e falha se algum @ aparecer em dois negócios.
+
+---
+
 ### A regra que sustenta o filtro: incerteza nunca descarta
 
 Todo descarte exige **prova positiva**. Não existe descarte por dado ausente, e
