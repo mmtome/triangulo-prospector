@@ -18,9 +18,11 @@ import { join, dirname, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { prospectar } from "./src/prospector.mjs";
-import { versaoChrome } from "./src/cdp.mjs";
 import { novoId, salvar, carregar, lerIndice, apagar, paraCSV } from "./src/store.mjs";
 import { enviarAoGestor } from "./src/gestor.mjs";
+import { listarModelos, sugerirModelo, acharModelo } from "./src/modelos.mjs";
+import { clonar, listarClones, PASTA_CLONES } from "./src/clonagem.mjs";
+import { abrirNavegador, novaAba, versaoChrome } from "./src/cdp.mjs";
 
 const RAIZ = dirname(fileURLToPath(import.meta.url));
 const PUBLICO = join(RAIZ, "public");
@@ -97,10 +99,74 @@ const TIPOS = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".mp4": "video/mp4",
 };
 
-async function servirEstatico(res, caminho) {
+async function servirArquivo(res, alvo, raiz) {
   // normalize + prefixo: sem isso "/../.env" sairia servido.
+  if (!normalize(alvo).startsWith(normalize(raiz))) {
+    return json(res, { error: "caminho inválido" }, 400);
+  }
+  try {
+    const dados = await readFile(alvo);
+    res.writeHead(200, {
+      "Content-Type": TIPOS[extname(alvo)] || "application/octet-stream",
+      "Cache-Control": "no-cache",
+    });
+    res.end(dados);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Serve uma proposta: `/proposta/<slug>/…`.
+ *
+ * A pasta do clone vem primeiro e o `dist/` do modelo depois. É essa ordem que
+ * faz a proposta funcionar sem copiar o site: `marca.json`, `logo.png` e as
+ * fotos saem do clone; todo o resto — HTML, JS, CSS, imagens do modelo — sai do
+ * modelo, compartilhado por todas as propostas. Corrigir o modelo conserta
+ * todas de uma vez.
+ *
+ * Caminho que não existe em nenhum dos dois cai no `index.html` do modelo, que
+ * é o de sempre em app de página única.
+ */
+async function servirProposta(res, rota) {
+  const partes = rota.split("/").filter(Boolean); // ["proposta", slug, ...resto]
+  const slug = partes[1];
+  if (!slug) return json(res, { error: "Proposta não informada." }, 404);
+
+  const pastaClone = join(PASTA_CLONES, slug);
+  if (!existsSync(join(pastaClone, "marca.json"))) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("Proposta não encontrada. Clone o lead primeiro.");
+  }
+
+  const marca = JSON.parse(readFileSync(join(pastaClone, "marca.json"), "utf8"));
+  const modelo = acharModelo(marca.modelo);
+  if (!modelo) {
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("O modelo '" + marca.modelo + "' desta proposta não está mais disponível.");
+  }
+
+  const resto = partes.slice(2).join("/") || "index.html";
+
+  if (await servirArquivo(res, join(pastaClone, resto), pastaClone)) return;
+  if (await servirArquivo(res, join(modelo.dist, resto), modelo.dist)) return;
+  if (await servirArquivo(res, join(modelo.dist, "index.html"), modelo.dist)) return;
+
+  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Não encontrado.");
+}
+
+async function servirEstatico(res, caminho) {
   const alvo = normalize(join(PUBLICO, caminho === "/" ? "index.html" : caminho));
   if (!alvo.startsWith(PUBLICO)) return json(res, { error: "caminho inválido" }, 400);
 
@@ -290,7 +356,83 @@ const servidor = createServer(async (req, res) => {
       }
     }
 
+    if (rota === "/api/modelos") {
+      const modelos = listarModelos().map(({ id, rotulo, descricao, nicho }) => ({
+        id, rotulo, descricao, nicho,
+      }));
+      return json(res, { modelos });
+    }
+
+    if (rota === "/api/clones") return json(res, { clones: listarClones() });
+
+    /**
+     * Clonar. É aqui que o lead vira proposta E entra no CRM — as duas coisas
+     * no mesmo gesto, de propósito: o funil é para quem a agência vai abordar
+     * com uma proposta na mão, não para todo negócio que a varredura encontrou.
+     * Mandar os 30 ao gestor enche o CRM de gente que ninguém vai procurar.
+     *
+     * A ordem importa. Cloná primeiro, manda depois: se a clonagem falhar, o
+     * lead não entra no funil e você tenta de novo. Se mandasse antes, um erro
+     * na clonagem deixaria um lead no CRM prometendo uma proposta que não
+     * existe — e ninguém descobre isso olhando o funil.
+     */
+    if (rota === "/api/clonar" && req.method === "POST") {
+      const corpo = await lerCorpo(req);
+      const id = String(corpo.id || "");
+      const dados = carregar(id) || execucoes.get(id)?.resultado;
+      if (!dados) return json(res, { error: "Execução não encontrada." }, 404);
+
+      const lead = dados.leads[Number(corpo.indice)];
+      if (!lead) return json(res, { error: "Lead não encontrado nesta varredura." }, 404);
+
+      const modelo = String(corpo.modelo || "") || sugerirModelo(dados.parametros?.termo);
+      if (!modelo) {
+        return json(res, {
+          error:
+            "Nenhum modelo disponível. Rode `npm run build` no modelo em '../modelos site/<nicho>/<modelo>' — " +
+            "só entram na lista os que têm dist/index.html.",
+        }, 409);
+      }
+
+      // Navegador próprio e curto: a varredura já fechou o dela, e a paleta
+      // precisa de canvas. Headless sempre — clonar não é para ser assistido.
+      let navegador = null;
+      let aba = null;
+      let resultado;
+      try {
+        navegador = await abrirNavegador({ headless: true });
+        aba = await novaAba(navegador.porta);
+        resultado = await clonar(lead, { modelo, aba, varredura: id });
+      } catch (e) {
+        return json(res, { error: "A clonagem falhou: " + e.message }, 500);
+      } finally {
+        await aba?.fechar().catch(() => {});
+        navegador?.fechar();
+      }
+
+      // Proposta pronta: agora o lead pode entrar no funil.
+      let gestor = null;
+      if (corpo.enviarAoGestor !== false) {
+        try {
+          gestor = await enviarAoGestor([lead], dados.parametros, {
+            url: GESTOR_URL,
+            token: PROSPECTOR_TOKEN,
+          });
+          dados.enviadosAoGestor = (dados.enviadosAoGestor || 0) + (gestor.criados || 0);
+          salvar(id, dados);
+        } catch (e) {
+          // A proposta está feita; dizer isso e separar o erro do envio é mais
+          // útil que devolver 502 e deixar o usuário achar que perdeu tudo.
+          gestor = { erro: e.message };
+        }
+      }
+
+      return json(res, { ...resultado, gestor });
+    }
+
     if (rota.startsWith("/api/")) return json(res, { error: "Rota inexistente." }, 404);
+
+    if (rota.startsWith("/proposta/")) return servirProposta(res, rota);
 
     return servirEstatico(res, rota);
   } catch (e) {

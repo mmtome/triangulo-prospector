@@ -292,5 +292,11 @@ export async function lerPerfil(aba, handle) {
     link,
     verificado: !!bruto.verificado,
     contaProfissional: !!bruto.profissional,
+    /* A foto do perfil. Já era lida e descartada — e é a única imagem da marca
+       que o Instagram entrega sem login: em pet shop, clínica e salão ela é o
+       logo em nove de cada dez perfis. Dela saem o logo da proposta e a paleta.
+       A URL do CDN da Meta expira em horas, então quem usar precisa baixar o
+       arquivo na hora da clonagem, nunca guardar o link e voltar depois. */
+    avatar: bruto.ogImage || null,
   };
 }

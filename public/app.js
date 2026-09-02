@@ -21,6 +21,9 @@ const estado = {
   rodando: false,
   fonte: null,       // EventSource
   alvoLeads: 20,     // quantos leads a varredura prometeu entregar
+  modelos: [],       // catálogo vindo de /api/modelos
+  modelo: null,      // o escolhido para clonar
+  propostas: {},     // indice do lead → resultado da clonagem
 };
 
 const TEMPERATURAS = [
@@ -397,8 +400,9 @@ function desenharAcoes() {
     '<button class="btn btn-pequeno" id="limparSelecao">Limpar seleção</button>' +
     '<span class="empurra"></span>' +
     '<a class="btn btn-pequeno" href="/api/exportar/' + encodeURIComponent(estado.execucaoId) + '.csv">Baixar CSV</a>' +
-    '<button class="btn btn-primario btn-pequeno" id="enviarGestor"' + (n ? "" : " disabled") + ">" +
-      (n ? "Enviar " + n + " ao gestor" : "Enviar ao gestor") + "</button>";
+    seletorDeModelo() +
+    '<button class="btn btn-pequeno" id="enviarGestor"' + (n ? "" : " disabled") + ">" +
+      (n ? "Enviar " + n + " sem proposta" : "Enviar sem proposta") + "</button>";
 
   $("#selecionarVisiveis").onclick = () => {
     lista.forEach(({ i }) => estado.selecionados.add(i));
@@ -425,6 +429,9 @@ function desenharLeads() {
   }
 
   alvo.innerHTML = lista.map(({ l, i }) => cartao(l, i)).join("");
+
+  alvo.querySelectorAll('.btn-clonar').forEach((b) =>
+    b.addEventListener('click', () => clonarLead(Number(b.dataset.i), b)));
 
   alvo.querySelectorAll('input[type="checkbox"]').forEach((c) =>
     c.addEventListener("change", () => {
@@ -488,6 +495,17 @@ function cartao(l, i) {
     links.push('<a class="btn btn-pequeno" target="_blank" rel="noopener" href="' + escapar(l.site.url) + '">Site</a>');
   }
 
+  /* Clonar é o gesto que promove o lead: gera a proposta com a marca dele e é
+     só aí que ele sobe para o CRM. O funil é para quem a agência vai abordar
+     com uma proposta na mão, não para todo negócio que a varredura achou. */
+  const proposta = estado.propostas[i];
+  links.push(
+    proposta
+      ? '<a class="btn btn-pequeno btn-primario" target="_blank" rel="noopener" href="' +
+        escapar(proposta.url) + '">Abrir proposta</a>'
+      : '<button class="btn btn-pequeno btn-primario btn-clonar" data-i="' + i + '">Clonar modelo</button>',
+  );
+
   const repetido = l.jaVisto
     ? '<div style="margin-top:10px;font-size:11px;color:var(--faint)">' +
       "↻ Já apareceu na varredura <b>" + escapar(l.jaVisto) + "</b>.</div>"
@@ -535,6 +553,106 @@ function cartao(l, i) {
   "</article>";
 }
 
+/* ── clonagem ────────────────────────────────────────────────────────────── */
+
+async function carregarModelos() {
+  try {
+    const r = await fetch("/api/modelos");
+    const d = await r.json();
+    estado.modelos = d.modelos || [];
+    if (!estado.modelo && estado.modelos.length) estado.modelo = estado.modelos[0].id;
+  } catch {
+    estado.modelos = [];
+  }
+}
+
+/**
+ * O seletor some quando só existe um modelo: escolher entre uma opção é um
+ * clique inútil, e ocupa espaço que a barra de ações não tem sobrando.
+ */
+function seletorDeModelo() {
+  if (estado.modelos.length < 2) return "";
+  return (
+    '<select id="modeloClone" class="btn-pequeno" title="Modelo usado ao clonar">' +
+    estado.modelos
+      .map(
+        (m) =>
+          '<option value="' + escapar(m.id) + '"' +
+          (m.id === estado.modelo ? " selected" : "") + ">" + escapar(m.rotulo) + "</option>",
+      )
+      .join("") +
+    "</select>"
+  );
+}
+
+/**
+ * Clona um lead: gera a proposta com a marca dele e o manda ao CRM.
+ *
+ * Demora — são downloads de imagem e um Chrome que sobe só para ler a paleta —
+ * então o botão vira o próprio indicador de progresso. Uma barra global aqui
+ * mentiria: você pode clonar três leads ao mesmo tempo.
+ */
+async function clonarLead(i, botao) {
+  const lead = estado.leads[i];
+  if (!lead) return;
+
+  const original = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Clonando…";
+
+  try {
+    const r = await fetch("/api/clonar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: estado.execucaoId,
+        indice: i,
+        modelo: $("#modeloClone")?.value || estado.modelo || "",
+      }),
+    });
+    const d = await r.json();
+
+    if (!r.ok) {
+      botao.disabled = false;
+      botao.textContent = original;
+      return avisar("erro", "<b>A clonagem falhou.</b> " + escapar(d.error || "erro desconhecido"));
+    }
+
+    estado.propostas[i] = d;
+
+    /* O relatório conta o que entrou e o que não entrou. Uma proposta com a
+       paleta do modelo em vez da do cliente ainda serve, mas você precisa saber
+       disso antes de mandar o link — não depois que ele responde. */
+    const partes = [];
+    partes.push(d.temLogo ? "logo do perfil" : "sem logo");
+    partes.push(d.paleta ? "paleta da marca" : "paleta do modelo");
+    partes.push(d.fotos + (d.fotos === 1 ? " foto do Google" : " fotos do Google"));
+
+    if (d.gestor?.erro) {
+      partes.push("<b>não entrou no CRM</b>: " + escapar(d.gestor.erro));
+    } else if (d.gestor) {
+      partes.push(d.gestor.duplicados ? "já estava no CRM" : "no CRM");
+    }
+
+    const ressalvas = d.ressalvas?.length
+      ? "<br><small>" + d.ressalvas.map(escapar).join("<br>") + "</small>"
+      : "";
+
+    avisar(
+      d.gestor?.erro ? "nota" : "ok",
+      "<b>Proposta gerada</b> — " + escapar(lead.nome) + ": " + partes.join(" · ") +
+        '. <a href="' + escapar(d.url) + '" target="_blank" rel="noopener">Abrir proposta</a>' +
+        ressalvas,
+    );
+
+    desenhar();
+  } catch (e) {
+    botao.disabled = false;
+    botao.textContent = original;
+    avisar("erro", "<b>A clonagem falhou.</b> " + escapar(e.message));
+  }
+}
+
 /* ── envio ao gestor ─────────────────────────────────────────────────────── */
 
 async function enviarAoGestor() {
@@ -578,3 +696,4 @@ async function enviarAoGestor() {
 }
 
 carregarDiagnostico();
+carregarModelos();

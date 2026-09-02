@@ -172,9 +172,24 @@ export async function detalharLugar(aba, lugar) {
       null;
 
     const notaEl = document.querySelector('[role="img"][aria-label*="estrela"]');
-    const fotos = document.querySelectorAll(
-      'button img[src*="googleusercontent"], img[src*="streetviewpixels"]',
-    ).length;
+
+    /* As fotos do GMN são a única fonte de imagem do negócio que dá para
+       coletar: a grade de posts do Instagram fica atrás do login. Guardamos a
+       URL, não só a contagem, porque é com elas que a proposta é montada.
+
+       O `=w` no fim da URL do googleusercontent é o pedido de tamanho — o
+       thumbnail vem em ~100px, que estoura ao virar hero de site. Trocamos por
+       w1600 antes de guardar; o servidor devolve a maior resolução que tiver. */
+    const fotosUrls = [
+      ...new Set(
+        [...document.querySelectorAll('button img[src*="googleusercontent"], img[src*="streetviewpixels"]')]
+          .map((i) => i.src)
+          .filter(Boolean)
+          .map((u) => u.replace(/=w\d+-h\d+[^/]*$/, "=w1600-h1200-k-no")),
+      ),
+    ].slice(0, 12);
+
+    const fotos = fotosUrls.length;
     const horarios = document.querySelectorAll('[aria-label*="Copiar horário"]').length;
     const authority = document.querySelector('[data-item-id="authority"]');
 
@@ -187,6 +202,7 @@ export async function detalharLugar(aba, lugar) {
       site: authority ? authority.href : null,
       siteRotulo: semRotulo(porItem("authority")),
       fotos,
+      fotosUrls,
       temHorario: horarios > 0,
       permanentementeFechado: /Permanentemente fechado|Fechado definitivamente/i.test(texto),
     };

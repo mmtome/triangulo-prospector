@@ -6,3 +6,6 @@ servidor.log
 # quem prospectou.
 data/*.json
 data/*.csv
+
+# Propostas geradas: são dados de cliente, não código.
+clones/
